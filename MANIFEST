@@ -1,0 +1,8 @@
+Changes
+MANIFEST
+Makefile.PL
+README
+lib/Net/Rackspace/Notes.pm
+script/racknotes
+t/01-basic.t
+META.yml                                 Module meta-data (added by MakeMaker)
