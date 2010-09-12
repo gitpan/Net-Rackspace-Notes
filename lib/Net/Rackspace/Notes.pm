@@ -1,143 +1,133 @@
-use MooseX::Declare;
+package Net::Rackspace::Notes;
+use Moose;
 
-class Net::Rackspace::Notes extends LWP::UserAgent
-{
-    use Data::Dumper;
-    use HTTP::Request;
-    use JSON::XS qw/encode_json decode_json/;
-    use MooseX::NonMoose; # Need this since LWP::UserAgent is non moose.
+our $VERSION = '0.0100';
 
-	our $VERSION = '0.0002';
+use HTTP::Request;
+use JSON qw(to_json from_json);
+use LWP::UserAgent;
 
-    has login => (
-        isa => 'Str',
-        is => 'ro',
-        required => 1
-    );
+has email => (
+    is => 'ro',
+    isa => 'Str',
+    required => 1,
+);
 
-    has password => (
-        isa => 'Str',
-        is => 'ro',
-        required => 1
-    );
+has password => (
+    is => 'ro',
+    isa => 'Str',
+    required => 1,
+);
 
-    has base_uri => (
-        isa => 'Str',
-        is => 'ro',
-        default => "http://apps.rackspace.com/api/",
-    );
+has agent => (
+    is => 'ro',
+    isa => 'LWP::UserAgent',
+    lazy => 1,
+    default => sub {
+        my $self = shift;
+        my $agent = LWP::UserAgent->new();
+        $agent->credentials('apps.rackspace.com:80', 'webmail',
+            $self->email, $self->password);
+        $agent->default_header(Accept => 'application/json');
+        return $agent;
+    },
+);
 
-    has base_uri_notes => (
-        isa => 'Str',
-        is => 'ro',
-        lazy_build => 1,
-    );
+has base_uri => (
+    is => 'ro',
+    isa => 'Str',
+    default => 'http://apps.rackspace.com/api/',
+);
 
-    has notes => (
-        isa => 'ArrayRef[HashRef[Str]]',
-        is => 'ro',
-        lazy_build => 1,
-        auto_deref => 1,
-    );
+has base_uri_notes => (
+    is => 'ro',
+    isa => 'Str',
+    lazy => 1,
+    builder => '_build_base_uri_notes',
+);
 
-    method BUILD($args) {
-        $self->default_header(Accept => 'application/json');
-    }
+has notes => (
+    is => 'ro',
+    isa => 'ArrayRef[HashRef[Str]]',
+    lazy => 1,
+    builder => '_build_notes',
+);
 
-    method _build_base_uri_notes() {
-        my ($response, $data);
+sub _build_base_uri_notes {
+    my ($self) = @_;
 
-        #$response = $self->get($self->base_uri);
-        #$data = decode_json $response->content;
-        #print Dumper $data;
+    my ($response, $data);
 
-        #$response = $self->get($data->{versions}[0]);
-        $response = $self->get($self->base_uri . '/0.9.0');
-        $data = decode_json $response->content;
+    #$response = $self->get($self->base_uri);
+    #$data = from_json $response->content;
+    #print Dumper $data;
 
-        $response = $self->get($data->{usernames}[0]);
-        $data = decode_json $response->content;
+    #$response = $self->get($data->{versions}[0]);
+    $response = $self->agent->get($self->base_uri . "/0.9.0");
+    my $status = $response->status_line;
+    die "Response was $status. Check your email and password.\n"
+        unless $status =~ /^2\d\d/;
+    $data = from_json $response->content;
 
-        return $data->{data_types}{notes}{uri};
-    }
+    $response = $self->agent->get($data->{usernames}[0]);
+    $data = from_json $response->content;
 
-    # This method is blocking.  The new way is asynchronous and faster.
-    method _build_notes_old() {
-        my $response = $self->get($self->base_uri_notes);
-        my $data = decode_json $response->content;
+    return $data->{data_types}{notes}{uri};
+}
 
-        my @notes;
-        foreach my $note (@{$data->{notes}}) {
-            $response = $self->get($note->{uri});
-            $data = decode_json($response->content)->{note};
-            $data->{uri} = $note->{uri};
-            push @notes, $data;
+sub _build_notes {
+    my ($self) = @_;
+    my $response = $self->agent->get($self->base_uri_notes);
+    my $data = from_json $response->content;
+
+    my @children;
+    foreach my $uri (map $_->{uri}, @{$data->{notes}}) {
+        my $pid = open my $p, '-|';
+        if ($pid) { # parent
+            push @children, [ $p, $uri ];
+        } else { # child
+            $response = $self->agent->get($uri);
+            print $response->content;
+            exit;
         }
-        return \@notes;
     }
 
-    method _build_notes() {
-        my $response = $self->get($self->base_uri_notes);
-        my $data = decode_json $response->content;
+    my @notes;
+    foreach my $child (@children) {
+        my ($p, $uri) = @$child;
+        my $json = do { local $/; <$p> };
+        close $p;
+        $data = from_json($json)->{note};
+        $data->{uri} = $uri;
+        push @notes, $data;
+    }
 
-        my @children;
-        foreach my $uri (map $_->{uri}, @{$data->{notes}}) {
-            my $pid = open my $p, '-|';
-            if ($pid) { # parent
-                push @children, [ $p, $uri ];
-            } else { # child
-                $response = $self->get($uri);
-                print $response->content;
-                exit;
-            }
+    return \@notes;
+}
+
+sub add_note {
+    my ($self, $subject, $body) = @_;
+    my $req = HTTP::Request->new(POST => $self->base_uri_notes);
+    $req->header(Content_Type => 'application/json');
+    my $json = to_json {
+        note => {
+            subject => $subject,
+            content => $body,
         }
+    };
+    $req->content($json);
+    my $response = $self->agent->request($req);
+    return $response;
+}
 
-        my @notes;
-        foreach my $child (@children) {
-            my ($p, $uri) = @$child;
-            my $json;
-            { local $/; $json = <$p>; }
-            close $p;
-            $data = decode_json($json)->{note};
-            $data->{uri} = $uri;
-            push @notes, $data;
-        }
-
-        return \@notes;
-    }
-
-    override get_basic_credentials($realm, $uri, $isproxy) {
-        return $self->login, $self->password;
-    }
-
-    method add_note(Str $subject, Str $body) {
-        my $req = HTTP::Request->new(POST => $self->base_uri_notes);
-        $req->header(Content_Type => 'application/json');
-        my $json = encode_json {
-            note => {
-                subject => $subject,
-                content => $body,
-            }
-        };
-        $req->content($json);
-        my $response = $self->request($req);
-        return $response;
-    }
-
-    method delete_note(Int $num) {
-        my $index = $num - 1;
-        my $uri = $self->notes->[$index]->{uri};
-        my $req = HTTP::Request->new(DELETE => $uri);
-        $req->header(Content_Type => 'application/json');
-        my $response = $self->request($req);
-        splice(@{$self->notes}, $index, 1) if ($response->is_success);
-        return $response;
-    }
-
-    method content(Int $num) { $self->notes->[$num - 1]->{content} }
-
-    method note(Int $num) { $self->notes->[$num - 1] }
-
+sub delete_note {
+    my ($self, $num) = @_;
+    my $uri = $self->notes->[$num]->{uri};
+    my $req = HTTP::Request->new(DELETE => $uri);
+    $req->header(Content_Type => 'application/json');
+    my $response = $self->agent->request($req);
+    #splice(@{notes()}, $num, 1) if ($response->is_success);
+    return $response;
 }
 
 =head1 NAME
@@ -146,7 +136,7 @@ Net::Rackspace::Notes - A way to interface with your Rackspace Email Notes.
 
 =head1 VERSION
 
-Version 0.0002
+Version 0.0100
 
 =head1 SYNOPSIS
 
@@ -156,16 +146,30 @@ Most likely, the racknotes script will be what you want to use instead of this.
 
 Example usage:
 
-    use Net::Rackspace::Notes;
+    use Net::Rackspace::Notes qw(add_note delete_note notes);
+    Net::Rackspace::Notes::init(
+        email  => 'bob@foo.com',
+        password => 'foo'
+    );
 
-    my $n = Net::Rackspace::Notes->new();
-    ...
+    for my $note (@{notes()}) {
+        print "$note->{subject}: $note->{content}\n";
+    }
+
+    # Add a new note with the given subject and content
+    add_note('some subject', 'some important note');
+
+    # Delete notes()->[3]
+    delete_note(3);
+
 
 =head1 FUNCTIONS
 
 =head2 add_note
 
 =head2 delete_note
+
+=head2 notes
 
 =head1 AUTHOR
 
