@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Net-Rackspace-Notes
-version:            0.0102
+version:            0.0103
 abstract:           A way to interface with your Rackspace Email Notes.
 author:
     - Naveed Massjouni <naveedm9@gmail.com>
@@ -11,11 +11,12 @@ configure_requires:
 build_requires:
     ExtUtils::MakeMaker:  0
 requires:
-    App::Rad:            1.04
-    JSON:                2.22
-    LWP::UserAgent:      5.835
-    Moose:               1.12
-    Term::ReadPassword:  0.11
+    App::Rad:             1.04
+    JSON:                 2.22
+    LWP::UserAgent:       5.835
+    Moose:                1.12
+    Parallel::ForkManager:  0.7.6
+    Term::ReadPassword:   0.11
 resources:
     bugtracker:  http://github.com/ironcamel/Net-Rackspace-Notes/issues
     repository:  http://github.com/ironcamel/Net-Rackspace-Notes
