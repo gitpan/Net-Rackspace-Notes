@@ -1,7 +1,7 @@
 package Net::Rackspace::Notes;
 use Moose;
 
-our $VERSION = '0.0101';
+our $VERSION = '0.0102';
 
 use HTTP::Request;
 use JSON qw(to_json from_json);
@@ -136,7 +136,7 @@ Net::Rackspace::Notes - A way to interface with your Rackspace Email Notes.
 
 =head1 VERSION
 
-Version 0.0101
+Version 0.0102
 
 =head1 SYNOPSIS
 
@@ -146,30 +146,36 @@ Most likely, the racknotes script will be what you want to use instead of this.
 
 Example usage:
 
-    use Net::Rackspace::Notes qw(add_note delete_note notes);
-    Net::Rackspace::Notes::init(
-        email  => 'bob@foo.com',
-        password => 'foo'
+    use Net::Rackspace::Notes;
+    my $racknotes = Net::Rackspace::Notes->new(
+        email    => $email,
+        password => $password,
     );
 
-    for my $note (@{notes()}) {
+    for my $note ($racknotes->notes) {
         print "$note->{subject}: $note->{content}\n";
     }
 
     # Add a new note with the given subject and content
-    add_note('some subject', 'some important note');
+    $racknotes->add_note('some subject', 'some important note');
 
     # Delete notes()->[3]
-    delete_note(3);
+    $racknotes->delete_note(3);
 
 
-=head1 FUNCTIONS
+=head1 METHODS
 
-=head2 add_note
+=head2 add_note($subject, $content)
 
-=head2 delete_note
+Add a new note with the given subject and content.
 
-=head2 notes
+=head2 delete_note($num)
+
+Delete note at index $num, as returned by notes().
+
+=head2 notes()
+
+Returns an arrayref of all the notes.  Returns a list in list context.
 
 =head1 AUTHOR
 
