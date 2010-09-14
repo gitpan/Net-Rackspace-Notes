@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Net-Rackspace-Notes
-version:            0.0103
+version:            0.0200
 abstract:           A way to interface with your Rackspace Email Notes.
 author:
     - Naveed Massjouni <naveedm9@gmail.com>
