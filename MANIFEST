@@ -1,8 +1,10 @@
 Changes
+LICENSE
 MANIFEST
+META.yml
 Makefile.PL
 README
+bin/racknotes
+dist.ini
 lib/Net/Rackspace/Notes.pm
-script/racknotes
 t/01-basic.t
-META.yml                                 Module meta-data (added by MakeMaker)

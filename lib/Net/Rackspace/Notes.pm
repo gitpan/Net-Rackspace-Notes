@@ -1,25 +1,16 @@
 package Net::Rackspace::Notes;
 use Moose;
 
-our $VERSION = '0.0200';
+our $VERSION = '1.0000'; # VERSION
 
-use Data::Dumper;
+#use Data::Dump;
 use HTTP::Request;
 use JSON qw(to_json from_json);
 use LWP::UserAgent;
 use Parallel::ForkManager;
 
-has email => (
-    is => 'ro',
-    isa => 'Str',
-    required => 1,
-);
-
-has password => (
-    is => 'ro',
-    isa => 'Str',
-    required => 1,
-);
+has email    => ( is => 'ro', isa => 'Str', required => 1);
+has password => ( is => 'ro', isa => 'Str', required => 1);
 
 has agent => (
     is => 'ro',
@@ -33,6 +24,7 @@ has agent => (
         $agent->default_header(Accept => 'application/json');
         return $agent;
     },
+    handles => [qw(get request)],
 );
 
 has base_uri => (
@@ -62,12 +54,13 @@ sub _build_base_uri_notes {
     my ($response, $data);
 
     #$response = $self->agent->get($self->base_uri);
-    #$data = from_json $response->content;
+    #dd from_json $response->content;
+    #exit;
 
-    #$response = $self->get($data->{versions}[0]);
+    #$response = $self->agent->get($data->{versions}[0]);
     $response = $self->agent->get($self->base_uri . "/0.9.0");
     my $status = $response->status_line;
-    die "Response was $status. Check your email and password.\n"
+    die "Response was $status.\nCheck your email and password.\n"
         unless $status =~ /^2\d\d/;
     $data = from_json $response->content;
 
@@ -79,8 +72,10 @@ sub _build_base_uri_notes {
 
 sub _build_notes {
     my ($self) = @_;
-    my $response = $self->agent->get($self->base_uri_notes);
+    my $response = $self->get($self->base_uri_notes);
     my $data = from_json($response->content);
+    #dd $self->base_uri_notes, $response->headers; exit;
+    #dd $data; exit;
 
     my @notes;
     my $pm = new Parallel::ForkManager(30);
@@ -90,15 +85,19 @@ sub _build_notes {
     });
 
     foreach my $uri (map $_->{uri}, @{$data->{notes}}) {
-        my $pid = $pm->start and next;
+        $pm->start and next;
         my $response = $self->agent->get($uri);
+        #dd $response->headers;
+        #dd from_json $response->content;
         my $note = from_json($response->content)->{note};
         $note->{uri} = $uri;
+        $note->{last_modified} = $response->last_modified;
         $pm->finish(0, $note);
     };
     $pm->wait_all_children;
 
-    return [ sort { $a->{subject} cmp $b->{subject} } @notes ];
+    #return [ sort { $a->{subject} cmp $b->{subject} } @notes ];
+    return [ sort { $b->{last_modified} cmp $a->{last_modified} } @notes ];
 }
 
 sub add_note {
@@ -143,13 +142,21 @@ sub delete_note {
     return $response;
 }
 
+1;
+
+# ABSTRACT: An interface to Rackspace Email Notes.
+
+
+__END__
+=pod
+
 =head1 NAME
 
-Net::Rackspace::Notes - A way to interface with your Rackspace Email Notes.
+Net::Rackspace::Notes - An interface to Rackspace Email Notes.
 
 =head1 VERSION
 
-Version 0.0200
+version 1.0000
 
 =head1 SYNOPSIS
 
@@ -175,7 +182,6 @@ Example usage:
     # Delete notes()->[3]
     $racknotes->delete_note(3);
 
-
 =head1 METHODS
 
 =head2 add_note($subject, $content)
@@ -196,56 +202,14 @@ Replace the contents of notes->[$num] with $content.
 
 =head1 AUTHOR
 
-Naveed Massjouni, C<< <naveedm9 at gmail.com> >>
+Naveed Massjouni <naveedm9@gmail.com>
 
-=head1 BUGS
+=head1 COPYRIGHT AND LICENSE
 
-Please report any bugs or feature requests to C<bug-net-rackspace-notes at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Net-Rackspace-Notes>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+This software is copyright (c) 2010 by Naveed Massjouni.
 
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command:
-
-    perldoc Net::Rackspace::Notes
-
-For the command line tool:
-    
-    perldoc racknotes
-
-You can also look for information at:
-
-=over 4
-
-=item * Github: Contribute by submitting patches, bugs and suggestions
-
-L<http://github.com/ironcamel/Net-Rackspace-Notes>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/Net-Rackspace-Notes>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Net-Rackspace-Notes>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
-
-=head1 COPYRIGHT & LICENSE
-
-Copyright 2010 Naveed Massjouni.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See http://dev.perl.org/licenses/ for more information.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut
 
-'Net::Rackspace::Notes'
